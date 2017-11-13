@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Geocoding service</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    
+    <!-- fontawesome stars -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <style>
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #map {
+        height: 100%;
+        width: 100%;
+      }
+
+      /* Optional: Makes the sample page fill the window. */
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .floating {
+        position: absolute;
+        top: 28px;
+        width: 150px;
+        z-index: 5;
+        background-color: #fff;
+        padding: 5px;
+        text-align: center;
+        font-family: 'Roboto','sans-serif';
+        line-height: 30px;
+        padding-left: 10px;
+        font-size: 15px;
+        margin-left: 30px;
+      }
+
+      .select{
+        left: 150px;
+        width: 100px;
+        height: 25px;
+      }
+
+      .input{
+        height: 10px;
+        border-radius: 5px;
+        left: 280px;
+        outline: none;
+        padding-left: 2px;
+        text-align: left;
+      }
+
+      .main {
+        display: flex;
+        flex-direction: row;
+        height: 100%;
+        width: 100%;
+      }
+
+      .map {
+        display: flex;
+        flex: 2;
+        height: 100%;
+        flex-direction: column;
+      }
+
+      .list {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        cursor: pointer;
+      }
+
+      #list{
+        overflow: scroll;
+        overflow-x: hidden;
+      }
+
+      #address{
+        flex: 3;
+        text-align: left;
+      }
+
+      .list-item{
+        list-style-type: none;
+        border: 1px solid grey;
+        border-radius: 5px;
+        margin: 10px;
+        padding: 10px;
+      }
+
+      .list-item:hover{
+        box-shadow: 2px 2px 2px #888888;
+      }
+
+      .header{
+        background-color: #FD5640;
+        color: white;
+        font-size: 30px;
+        padding: 20px;
+        margin: 0;
+        cursor: pointer;
+      }
+
+      .loader {
+        border: 16px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 16px solid #3498db;
+        width: 120px;
+        height: 120px;
+        -webkit-animation: spin 2s linear infinite;
+        animation: spin 2s linear infinite;
+        position: absolute;
+        left: 45%;
+        top: 45%;
+        z-index: 5;
+      }
+
+      @-webkit-keyframes spin {
+        0% { -webkit-transform: rotate(0deg); }
+        100% { -webkit-transform: rotate(360deg); }
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .upper{
+        display: flex;
+        flex-direction: row;
+      }
+
+      .address{
+        top: 5px;
+        left: 450px;
+        background-color: #FD5640; 
+        color: white;
+        min-width: 300px;
+      }
+
+    </style>
+  </head>
+  <body>
+    <select class="floating select" >
+      <option value='store' selected="true" >store</option>
+    </select>
+    <input class="floating input" 
+            type="text" 
+            value='' 
+            placeholder="Search anything"/>
+    <p class="floating address"></p>
+
+    <div class="main">
+      <div class="map">
+        <p class="header">Map View</p>
+        <div id="map"></div>
+      </div>
+      
+      <div class="list">
+        <p class="header">Results</p>
+        <div id="list">
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var map;
+      var infowindow;
+      let markers = [];
+      createOptions();
+
+      function initMap(type = 'store', search = '') {
+        // clear list 
+          const list = document.getElementById('list');
+          list.innerHTML = '';
+
+        // clear markers
+        markers = [];
+
+        // get current location
+        if (navigator.geolocation) {
+          const body = document.querySelector('body');
+          const loader = document.createElement('div');
+          loader.className = 'loader';
+          body.append(loader);
+          navigator.geolocation.getCurrentPosition(showPosition);
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
+
+        // Set location
+        function showPosition(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          // fetch current location detail 
+          const api = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=AIzaSyATVpRUITkvtZ0IiN0aVRrrI-UZ22KAqNI`;
+          fetch(api)
+               .then(data => data.json())
+               .then(data => {
+                 const city = data.results[0].address_components[3].long_name;
+                 const state = data.results[0].address_components[5].long_name;
+                 const country = data.results[0].address_components[6].long_name;
+                 const currentAddress = `${city}, ${state}, ${country}`;
+                 document.querySelector('.address').innerHTML = currentAddress;
+               });
+
+          // cancel loading animation
+          const loader = document.querySelector('.loader');
+          loader.remove();
+
+          var currentLocation = {lat: lat, lng: lng};
+
+          map = new google.maps.Map(document.getElementById('map'), {
+            center: currentLocation,
+            zoom: 15
+          });
+
+          
+          infowindow = new google.maps.InfoWindow();
+          var service = new google.maps.places.PlacesService(map);
+
+          if(search === ''){
+            service.nearbySearch({
+              location: currentLocation,
+              radius: 1000,
+              type: [type]
+            }, callback);
+          }else{
+            service.textSearch({
+              location: currentLocation,
+              radius: 1000,
+              query: search
+            }, callback);
+          }
+        }
+      }
+
+      function callback(results, status) {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          // Pin the markers
+          results.forEach(marker => {
+            createMarker(marker);
+          });
+
+          // Create the list
+          results.forEach(item => {
+            createListItem(item);
+          });
+        }
+      }
+
+      function createListItem(item){
+        const list = document.getElementById('list');
+        const listItem = document.createElement('li');
+        const name = document.createElement('h4');
+        const upper = document.createElement('div');
+        const img = document.createElement('img');
+        const address = document.createElement('p');
+        const rating = createStar(item.rating);
+
+        // add class 
+        listItem.className = "list-item";
+        upper.className = "upper";
+
+        // name 
+        name.innerHTML = `${item.name}`;
+
+        // image 
+        img.src = `${item.icon}`;
+        img.height = 30;
+        img.width = 30;
+        img.style.margin = '10px';
+        img.style.marginLeft = '0';
+
+        // address 
+        if (item.formatted_address){
+          address.innerHTML = `${item.formatted_address}`;
+        }else{
+          address.innerHTML = `${item.vicinity}`;
+        }
+
+        // build listItem 
+        upper.append(img);
+        upper.append(name);
+        listItem.append(upper);
+        listItem.append(rating);
+        listItem.append(address);
+
+        list.append(listItem);  
+
+        // center marker on click from list 
+        listItem.addEventListener('click', function(){
+          const markerPosition = item.geometry.location;
+          const targetMarker = markers.find(marker => {
+            return marker.position === markerPosition;
+          });
+          map.panTo(markerPosition);
+          infowindow.setContent(item.name);
+          infowindow.open(map, targetMarker);
+        });                 
+      }
+
+      function createOptions(){
+        const array = ["accounting", "airport", "amusement_park", "aquarium", "art_gallery", "atm", "bakery", "bank", "bar", "beauty_salon", "bicycle_store", "book_store", "bowling_alley", "bus_station", "cafe", "campground", "car_dealer", "car_rental", "car_repair", "car_wash", "casino", "cemetery", "church", "city_hall", "clothing_store", "convenience_store", "courthouse", "dentist", "department_store", "doctor", "electrician", "electronics_store", "embassy", "establishment", "finance", "fire_station", "florist", "food", "funeral_home", "furniture_store", "gas_station", "general_contractor", "grocery_or_supermarket", "gym", "hair_care", "hardware_store", "health", "hindu_temple", "home_goods_store", "hospital", "insurance_agency", "jewelry_store", "laundry", "lawyer", "library", "liquor_store", "local_government_office", "locksmith", "lodging", "meal_delivery", "meal_takeaway", "mosque", "movie_rental", "movie_theater", "moving_company", "museum", "night_club", "painter", "park", "parking", "pet_store", "pharmacy", "physiotherapist", "place_of_worship", "plumber", "police", "post_office", "real_estate_agency", "restaurant", "roofing_contractor", "rv_park", "school", "shoe_store", "shopping_mall", "spa", "stadium", "storage", "subway_station", "synagogue", "taxi_stand", "train_station", "transit_station", "travel_agency", "university", "veterinary_care", "zoo"];
+        const select = document.querySelector('.floating');
+        array.forEach(option => {
+          const op = document.createElement('option');
+          op.value = option;
+          op.innerHTML = option;
+          select.append(op);
+        });
+      }
+
+      function createStar(rating){
+        // star index 
+        const stars = document.createElement('span');
+        stars.innerHTML = 'Rating ';
+        if(typeof rating === 'undefined') rating = 1;
+        for(let i = 1; i <= Math.round(rating); i++){
+          stars.append(oneStar(i));
+        }
+        return stars;
+      }
+
+      function oneStar(id){
+        // make one star 
+        const star = document.createElement('i');
+        star.className = 'fa fa-star fa-2';
+        star.id = id;
+        return star;
+      }
+
+      function createMarker(place) {
+        var placeLoc = place.geometry.location;
+        var marker = new google.maps.Marker({
+          map: map,
+          position: placeLoc
+        });
+
+        markers.push(marker);
+        google.maps.event.addListener(marker, 'click', function() {
+          map.panTo(marker.getPosition());
+          infowindow.setContent(place.name);
+          infowindow.open(map, this);
+        });
+      }
+
+      // get user input 
+      const options = document.querySelector('.select');
+      const input = document.querySelector('.input');
+      // filter by type 
+      options.addEventListener('change', function(){
+        input.value = '';
+        initMap(this.value);
+      });
+      // search from user text input 
+      input.addEventListener('change', function(){
+        initMap('', this.value)
+      });
+
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyATVpRUITkvtZ0IiN0aVRrrI-UZ22KAqNI&libraries=places&callback=initMap"
+  async defer></script>
+  </body> 
+</html>
